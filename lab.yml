@@ -1,0 +1,91 @@
+- hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Paquets de base
+      ansible.builtin.apt:
+        name: [openssh-server, nftables, docker.io, docker-compose]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Clé SSH d'alice
+      ansible.posix.authorized_key:
+        user: alice
+        key: "{{ lookup('file', 'files/alice.pub') }}"
+
+    - name: Durcissement SSH
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/10-durcissement.conf
+        content: |
+          PermitRootLogin no
+          PasswordAuthentication no
+        mode: '0644'
+      notify: Recharger sshd
+
+    - name: Pare-feu nftables (22 seulement)
+      ansible.builtin.copy:
+        dest: /etc/nftables.conf
+        mode: '0644'
+        content: |
+          #!/usr/sbin/nft -f
+          table inet lab
+          delete table inet lab
+          table inet lab {
+            chain input {
+              type filter hook input priority 0; policy drop;
+              ct state established,related accept
+              iif lo accept
+              meta l4proto { icmp, ipv6-icmp } accept
+              udp sport 67 udp dport 68 accept
+              tcp dport 22 accept
+            }
+          }
+      notify: Recharger nftables
+
+    - name: nftables actif au démarrage
+      ansible.builtin.systemd:
+        name: nftables
+        state: started
+        enabled: true
+
+    - name: Docker actif au démarrage
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: alice dans le groupe docker
+      ansible.builtin.user:
+        name: alice
+        groups: docker
+        append: true
+
+    - name: Dossier de la plateforme
+      ansible.builtin.file:
+        path: /srv/plateforme
+        state: directory
+        owner: alice
+        group: alice
+        mode: '0755'
+
+    - name: Fichier compose de srv-lab
+      ansible.builtin.copy:
+        src: compose.lab.yaml
+        dest: /srv/plateforme/compose.yaml
+        owner: alice
+        group: alice
+        mode: '0644'
+
+    - name: Démarrer la pile
+      community.docker.docker_compose_v2:
+        project_src: /srv/plateforme
+        state: present
+
+  handlers:
+    - name: Recharger sshd
+      ansible.builtin.systemd:
+        name: ssh
+        state: reloaded
+    - name: Recharger nftables
+      ansible.builtin.command: nft -f /etc/nftables.conf
