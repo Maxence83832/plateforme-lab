@@ -1,0 +1,21 @@
+services:
+  kuma:
+    image: louislam/uptime-kuma:2
+    restart: unless-stopped
+    volumes:
+      - ./data/kuma:/app/data
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  ntfy:
+    image: binwiederhier/ntfy:v2
+    command: serve
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Paris
+      - NTFY_BASE_URL=http://localhost:8080
+      - NTFY_CACHE_FILE=/var/cache/ntfy/cache.db
+    volumes:
+      - ./data/ntfy:/var/cache/ntfy
+    ports:
+      - "127.0.0.1:8080:80"

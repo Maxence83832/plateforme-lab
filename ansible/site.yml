@@ -1,0 +1,14 @@
+- hosts: vps
+  become: true
+  tasks:
+    - name: Installer Docker
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2]
+        state: present
+    - name: Copier la plateforme
+      ansible.builtin.copy:
+        src: plateforme/
+        dest: /srv/plateforme/
+    - name: Démarrer la pile
+      community.docker.docker_compose_v2:
+        project_src: /srv/plateforme
